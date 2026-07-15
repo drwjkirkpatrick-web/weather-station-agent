@@ -1,0 +1,79 @@
+# Weather Station Agent Configuration
+# Copy to config.yaml and edit for your setup.
+# All values are optional — defaults are in core/config.py
+
+station_name: "weather-station-01"
+station_id: "ws01"
+latitude: 44.0              # Oregon default
+longitude: -123.0
+elevation_m: 150.0
+mock_mode: false
+verbose: false
+
+sensors:
+  # ── I2C sensors (bus 1 on Pi Zero 2 W) ──────────────────────────
+  bme680_enabled: true
+  bme680_i2c_address: 0x77
+  bme680_sea_level_pressure: 1013.25
+
+  bme280_enabled: false     # set true if you have a second temp/pressure sensor
+  bme280_i2c_address: 0x76
+
+  sht31_enabled: false      # set true for high-accuracy temp/humidity
+  sht31_i2c_address: 0x44
+
+  sgp30_enabled: true
+  sgp30_i2c_address: 0x58
+
+  veml7700_enabled: true
+  veml7700_i2c_address: 0x10
+
+  ds3231_enabled: true
+  ds3231_i2c_address: 0x68
+
+  # ── Serial sensor ──────────────────────────────────────────────
+  pms5003_enabled: true
+  pms5003_serial_port: "/dev/serial0"
+  pms5003_baudrate: 9600
+
+  # ── GPIO sensors ────────────────────────────────────────────────
+  anemometer_enabled: true
+  anemometer_pin: 4
+  anemometer_radius_cm: 6.0
+  anemometer_calibration_factor: 1.0
+
+  wind_vane_enabled: true
+  wind_vane_adc_channel: 0
+  wind_vane_vin: 3.3
+
+  rain_gauge_enabled: true
+  rain_gauge_pin: 17
+  rain_gauge_bucket_ml: 0.2794
+
+  # ── Analog sensor ──────────────────────────────────────────────
+  mq135_enabled: false
+  mq135_adc_channel: 1
+  mq135_vin: 3.3
+
+recording:
+  db_path: "data/weather.db"
+  sample_interval_seconds: 60
+  retention_days: 365
+  batch_size: 50
+
+alerts:
+  high_temp_c: 35.0
+  low_temp_c: -10.0
+  high_humidity_pct: 95.0
+  low_humidity_pct: 10.0
+  high_pressure_hpa: 1040.0
+  low_pressure_hpa: 990.0
+  high_pm25_ugm3: 35.0
+  high_tvoc_ppb: 1000.0
+  high_wind_mps: 15.0
+  heavy_rain_mmh: 25.0
+
+web:
+  host: "0.0.0.0"
+  port: 8080
+  debug: false

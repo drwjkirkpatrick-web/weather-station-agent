@@ -1,0 +1,25 @@
+[Unit]
+Description=Weather Station Agent
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/weather-station-agent
+ExecStart=/home/pi/weather-station-agent/.venv/bin/python -m weather_station.main -c /home/pi/weather-station-agent/config.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables for hardware access
+Environment=PYTHONUNBUFFERED=1
+
+# Security hardening
+ProtectSystem=strict
+ReadWritePaths=/home/pi/weather-station-agent/data
+ProtectHome=tmpfs
+
+[Install]
+WantedBy=multi-user.target

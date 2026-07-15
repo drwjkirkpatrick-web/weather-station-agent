@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weather-station-agent"
+version = "0.1.0"
+description = "Comprehensive weather measurement and recording agent for Raspberry Pi Zero 2 W"
+requires-python = ">=3.11"
+authors = [{name = "Walker Kirkpatrick"}]
+license = {text = "MIT"}
+
+dependencies = [
+    # Web dashboard
+    "flask>=3.0",
+    # CLI / config
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Hardware libraries — install on the Pi Zero 2 W, not on dev machines.
+# The agent runs in mock mode without them, so they're optional.
+hardware = [
+    "adafruit-blinka>=8.0",
+    "adafruit-circuitpython-bme680>=2.0",
+    "adafruit-circuitpython-bme280>=2.6",
+    "adafruit-circuitpython-sht31d>=2.0",
+    "adafruit-circuitpython-sgp30>=2.0",
+    "adafruit-circuitpython-veml7700>=2.0",
+    "adafruit-circuitpython-ds3231>=2.0",
+    "adafruit-circuitpython-mcp3xxx>=1.5",
+    "pyserial>=3.5",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+weather-station = "weather_station.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
