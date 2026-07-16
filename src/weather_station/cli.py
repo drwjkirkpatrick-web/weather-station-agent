@@ -30,6 +30,7 @@ from weather_station.recording.data_recorder import DataRecorder
 from weather_station.recording.exporter import DataExporter
 from weather_station.reporting.report_generator import ReportGenerator
 from weather_station.alerts.alert_engine import AlertEngine
+from weather_station.forwarding.forwarder import DataForwarder
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             recording=config.recording,
             alerts=config.alerts,
             web=config.web,
+            forwarding=config.forwarding,
         )
 
     _setup_logging(config.verbose)
@@ -138,8 +140,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Set up alert engine
     alert_engine = AlertEngine.from_config(db, config.alerts)
 
+    # Set up data forwarder (optional)
+    forwarder = DataForwarder(db=db, config=config, mock_mode=config.mock_mode)
+
     # Start recorder
     recorder.start()
+
+    # Start forwarder (only if enabled + configured)
+    forwarder.start()
 
     # Start web dashboard
     from weather_station.web.dashboard import create_app
@@ -150,6 +158,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         recorder.stop()
+        forwarder.stop()
     return 0
 
 
@@ -166,6 +175,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             recording=config.recording,
             alerts=config.alerts,
             web=config.web,
+            forwarding=config.forwarding,
         )
     _setup_logging(config.verbose)
 
@@ -208,6 +218,7 @@ def cmd_read(args: argparse.Namespace) -> int:
             recording=config.recording,
             alerts=config.alerts,
             web=config.web,
+            forwarding=config.forwarding,
         )
     _setup_logging(config.verbose)
 
@@ -288,6 +299,78 @@ def cmd_alert_rules(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_forward_status(args: argparse.Namespace) -> int:
+    """Show forwarding service status and optionally trigger a test push."""
+    config = Config.from_yaml(args.config) if args.config else Config.default()
+    if args.mock:
+        config = Config(
+            station_name=config.station_name,
+            station_id=config.station_id,
+            latitude=config.latitude,
+            longitude=config.longitude,
+            mock_mode=True,
+            verbose=args.verbose,
+            sensors=config.sensors,
+            recording=config.recording,
+            alerts=config.alerts,
+            web=config.web,
+            forwarding=config.forwarding,
+        )
+    _setup_logging(config.verbose)
+
+    forwarder = DataForwarder(
+        db=WeatherDatabase(config.recording.db_path),
+        config=config,
+        mock_mode=config.mock_mode,
+    )
+
+    fc = config.forwarding
+    print(f"\n{'='*60}")
+    print(f"  Data Forwarding Status | Station: {config.station_id}")
+    print(f"  Master switch: {'ON' if fc.enabled else 'OFF'}")
+    print(f"  Interval: {fc.forward_interval_seconds}s")
+    print(f"  Mock mode: {config.mock_mode}")
+    print(f"{'='*60}")
+
+    if not fc.enabled:
+        print("\n  Forwarding is disabled. Set 'forwarding.enabled: true' in config.")
+        print()
+        return 0
+
+    services = forwarder._services
+    active = [s for s in services if s.is_enabled()]
+    print(f"\n  Active services: {len(active)}")
+    print()
+
+    for s in services:
+        status = "ENABLED" if s.is_enabled() else "disabled"
+        hc = s.health_check()
+        last = hc.get("last_result")
+        last_str = ""
+        if last:
+            last_str = f"  last: {'OK' if last['success'] else 'FAIL: ' + last['message']}"
+        print(f"  [{status:7s}] {s.name:20s} {s.description}")
+        if hc["total_sent"] > 0:
+            print(f"           sent={hc['total_sent']} success={hc['total_success']} "
+                  f"fail={hc['total_failures']} consec_fail={hc['consecutive_failures']}")
+        if last_str:
+            print(f"           {last_str}")
+        print()
+
+    # Optional: trigger a single test forward
+    if args.test:
+        print("  Triggering test forward...\n")
+        results = forwarder.forward_once()
+        if not results:
+            print("  No active services or no data to forward.")
+        for r in results:
+            symbol = "✓" if r.success else "✗"
+            print(f"  {symbol} {r.service}: {r.message}")
+        print()
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -316,6 +399,13 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.set_defaults(func=cmd_report)
 
     subparsers.add_parser("alert-rules", help="List configured alert rules").set_defaults(func=cmd_alert_rules)
+
+    forward_parser = subparsers.add_parser(
+        "forward-status", help="Show data forwarding service status")
+    forward_parser.add_argument(
+        "-t", "--test", action="store_true",
+        help="Trigger a single test forward to enabled services")
+    forward_parser.set_defaults(func=cmd_forward_status)
 
     return parser
 

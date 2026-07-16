@@ -18,9 +18,10 @@ An open-source weather station agent that reads 11 different sensor types, recor
 | Alerts | 10 default rules (high temp, freeze, high wind, heavy rain, poor air quality, etc.) |
 | Reporting | Daily and weekly summaries with min/max/avg |
 | Dashboard | Flask web UI, auto-refresh, dark theme, mobile-friendly |
-| CLI | Full-featured CLI for status, reads, exports, reports |
+| Forwarding | Push to Wunderground PWS, CWOP, WeatherCloud, OpenWeatherMap |
+| CLI | Full-featured CLI for status, reads, exports, reports, forwarding |
 | Mock Mode | 100% functional without hardware — develop and test anywhere |
-| Tests | 107 tests, all passing |
+| Tests | 159 tests, all passing |
 
 ---
 
@@ -107,6 +108,8 @@ sudo journalctl -u weather-station -f
 | `weather-station report` | Generate a daily report |
 | `weather-station report -w` | Generate a weekly report |
 | `weather-station alert-rules` | List configured alert rules |
+| `weather-station forward-status` | Show data forwarding service status |
+| `weather-station forward-status -t` | Test-push to enabled forwarding services |
 
 ### Global Flags
 
@@ -180,18 +183,18 @@ alerts:
                     |  Main     | <-- orchestrator (main.py)
                     |  Agent    |
                     +-----------+
-                    /    |    \
-              +------+   |   +------+
-              |Recorder|  |   |Dashboard|
-              +------+   |   +------+
-                    /    |      |
-              +------+   |   +------+
-              |Sensors|  |   |SQLite |
-              +------+   |   +------+
-                    |    |      |
-              +------+   |   +------+
-              |Alerts |  |   |Reports|
-              +------+  |   +------+
+                    /    |    \    \
+              +------+   |   +------+  +--------+
+              |Recorder|  |   |Dashboard| |Forwarder|
+              +------+   |   +------+  +--------+
+                    /    |      |        /     \
+              +------+   |   +------+ +---+ +---+
+              |Sensors|  |   |SQLite | |WU | |CWOP|
+              +------+   |   +------+ +---+ +---+
+                    |    |      |        /     \
+              +------+   |   +------+ +---+ +---+
+              |Alerts |  |   |Reports| |WC | |OWM |
+              +------+  |   +------+ +---+ +---+
                         |
                    +---------+
                    |DataExporter|
@@ -232,9 +235,17 @@ weather-station-agent/
 |   |   |-- alert_engine.py   # Threshold-based alerting
 |   |-- reporting/
 |   |   |-- report_generator.py # Daily/weekly summaries
+|   |-- forwarding/
+|   |   |-- forwarder.py      # Background thread — pushes to services
+|   |   |-- service_base.py   # ForwardingServiceBase (like SensorBase)
+|   |   |-- services/
+|   |       |-- wunderground.py   # Weather Underground PWS (HTTP GET)
+|   |       |-- cwop.py           # CWOP / NOAA MADIS (TCP APRS)
+|   |       |-- weathercloud.py  # WeatherCloud (HTTP GET, ×10 metric)
+|   |       |-- openweathermap.py # OpenWeatherMap 3.0 (HTTP POST JSON)
 |   |-- web/
 |       |-- dashboard.py      # Flask web dashboard
-|-- tests/                    # 107 tests
+|-- tests/                    # 159 tests
 |-- deploy/
     |-- weather-station.service  # systemd unit file
 ```
@@ -294,6 +305,85 @@ weather-station --mock run
 # - Light follows daylight cycle
 # - Random-walk variation for all metrics
 ```
+
+---
+
+## Data Forwarding (Optional)
+
+The station can optionally push weather data to online forecasting and citizen-science networks. This extends the station's usefulness beyond local recording — your data contributes to global weather models and public displays.
+
+All forwarding is **opt-in** and **off by default**. No external Python dependencies (uses only stdlib `urllib` and `socket`).
+
+### Supported Services
+
+| Service | Protocol | Units | Impact |
+|---------|----------|-------|--------|
+| **Weather Underground PWS** | HTTP GET | Imperial (°F, mph, inHg) | Global PWS network, real-time display |
+| **CWOP** | TCP APRS | Mixed (°F, mph, tenths-mb) | Feeds NOAA MADIS → NWS forecast models |
+| **WeatherCloud** | HTTP GET | Metric ×10 | Social weather network, maps & graphs |
+| **OpenWeatherMap** | HTTP POST JSON | Metric | Global weather data API, Station API 3.0 |
+
+### Setup
+
+1. **Register** your station with the service(s) you want to use:
+   - Wunderground: https://www.wunderground.com/pws/
+   - CWOP: http://wxqa.com/
+   - WeatherCloud: https://weathercloud.net/
+   - OpenWeatherMap: https://openweathermap.org/stations
+
+2. **Edit** `config.yaml` — enable the `forwarding` section and fill in your credentials:
+
+```yaml
+forwarding:
+  enabled: true                    # master switch
+  forward_interval_seconds: 300    # push every 5 min (CWOP minimum)
+  timeout_seconds: 30
+
+  # Enable only the services you've registered with:
+  wunderground_enabled: true
+  wunderground_station_id: "KCASANFR5"
+  wunderground_password: "your-station-key"
+
+  cwop_enabled: true
+  cwop_station_id: "EW9876"
+  # cwop_server: "cwop.aprs.net"   # default
+  # cwop_port: 14580                # default
+```
+
+3. **Test** your configuration in mock mode (no hardware needed):
+
+```bash
+# Check forwarding status
+weather-station --mock forward-status
+
+# Trigger a test push to all enabled services
+weather-station --mock forward-status -t
+```
+
+4. **Deploy** — the forwarder starts automatically with the agent. It runs in its own background thread, reading the latest readings from the database and pushing to each enabled service at the configured interval.
+
+### Architecture
+
+The forwarding module follows the same pluggable-adapter pattern as the sensor drivers:
+
+- **`ForwardingServiceBase`** — abstract base class (like `SensorBase`)
+- **`DataForwarder`** — background thread orchestrator (like `DataRecorder`)
+- **Service adapters** — one per service, each handles:
+  - `format_payload()` — convert readings to the service's wire format + units
+  - `send()` — transmit via HTTP GET, HTTP POST JSON, or raw TCP
+
+The forwarder reads the latest readings from the SQLite database (not directly from sensors), so it's fully decoupled from the recording loop. If a remote service is down or slow, local recording continues without interruption.
+
+### Adding a New Service
+
+To add a new forwarding target:
+
+1. Create `src/weather_station/forwarding/services/yourservice.py`
+2. Subclass `ForwardingServiceBase` — implement `is_enabled()`, `format_payload()`, `send()`
+3. Add config fields to `ForwardingConfig` in `core/config.py`
+4. Register the adapter in `forwarding/services/__init__.py`
+5. Add it to `_build_services()` in `forwarder.py`
+6. Write tests in `tests/test_forwarding.py`
 
 ---
 

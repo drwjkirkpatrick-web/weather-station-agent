@@ -77,3 +77,41 @@ web:
   host: "0.0.0.0"
   port: 8080
   debug: false
+
+# ── Data Forwarding ────────────────────────────────────────────────────
+# Optional: push weather data to online forecasting / citizen-science
+# networks.  All services are off by default.  Enable only the ones
+# you've registered with.  See docs/forwarding.md for setup guides.
+forwarding:
+  enabled: false                # master switch — must be true to forward
+  forward_interval_seconds: 300 # push every 5 min (CWOP minimum is 5)
+  timeout_seconds: 30           # network timeout for HTTP/TCP calls
+
+  # Weather Underground PWS
+  # Register: https://www.wunderground.com/pws/
+  wunderground_enabled: false
+  wunderground_station_id: ""    # e.g. "KCASANFR5"
+  wunderground_password: ""      # Station Key (case-sensitive)
+  wunderground_rapidfire: false  # true → use real-time rtupdate server
+
+  # CWOP / NOAA MADIS
+  # Register: http://wxqa.com/
+  # Your data feeds NWS forecast models via MADIS.
+  cwop_enabled: false
+  cwop_station_id: ""           # e.g. "EW9876"
+  cwop_server: "cwop.aprs.net"
+  cwop_port: 14580              # fallback: 23
+
+  # WeatherCloud
+  # Register: https://weathercloud.net/
+  weathercloud_enabled: false
+  weathercloud_device_id: ""    # 12-digit numeric ID from dashboard
+  weathercloud_device_key: ""   # 32-char hex key from dashboard
+
+  # OpenWeatherMap Station API 3.0
+  # Register: https://openweathermap.org/stations
+  # NOTE: You must register your station via POST /stations first
+  # to get the internal station_id (24 hex chars).
+  openweathermap_enabled: false
+  openweathermap_api_key: ""
+  openweathermap_station_id: ""  # internal ID from OWM API

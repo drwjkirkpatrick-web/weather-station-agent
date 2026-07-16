@@ -26,6 +26,7 @@ from weather_station.core.database import WeatherDatabase
 from weather_station.recording.data_recorder import DataRecorder
 from weather_station.alerts.alert_engine import AlertEngine
 from weather_station.reporting.report_generator import ReportGenerator
+from weather_station.forwarding.forwarder import DataForwarder
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class WeatherStationAgent:
         self.sensors: list[Any] = []
         self.recorder: DataRecorder | None = None
         self.alert_engine: AlertEngine | None = None
+        self.forwarder: DataForwarder | None = None
         self.report_generator = ReportGenerator(self.db, self.config.station_id)
         self._running = False
         self._dashboard_thread: threading.Thread | None = None
@@ -88,6 +90,13 @@ class WeatherStationAgent:
         # Set up alert engine
         self.alert_engine = AlertEngine.from_config(self.db, self.config.alerts)
 
+        # Set up data forwarder (optional — only starts if enabled)
+        self.forwarder = DataForwarder(
+            db=self.db,
+            config=self.config,
+            mock_mode=self.config.mock_mode,
+        )
+
         logger.info("Initialized %d sensors", len(self.sensors))
 
     def start(self) -> None:
@@ -101,6 +110,10 @@ class WeatherStationAgent:
         # Start recorder
         if self.recorder:
             self.recorder.start()
+
+        # Start data forwarder (only if enabled + configured)
+        if self.forwarder:
+            self.forwarder.start()
 
         # Start dashboard in a thread
         self._start_dashboard()
@@ -151,6 +164,9 @@ class WeatherStationAgent:
         """Stop all subsystems cleanly."""
         logger.info("Shutting down weather station agent...")
 
+        if self.forwarder:
+            self.forwarder.stop()
+
         if self.recorder:
             self.recorder.stop()
 
@@ -179,6 +195,7 @@ class WeatherStationAgent:
             "sensors": sensor_health,
             "database": db_stats,
             "recorder": recorder_health,
+            "forwarding": self.forwarder.health_check() if self.forwarder else {},
         }
 
 
@@ -203,6 +220,7 @@ def main() -> None:
             recording=config.recording,
             alerts=config.alerts,
             web=config.web,
+            forwarding=config.forwarding,
         )
     elif args.verbose:
         config = Config(
@@ -214,6 +232,7 @@ def main() -> None:
             recording=config.recording,
             alerts=config.alerts,
             web=config.web,
+            forwarding=config.forwarding,
         )
 
     agent = WeatherStationAgent(config)

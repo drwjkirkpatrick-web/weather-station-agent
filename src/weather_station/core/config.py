@@ -114,6 +114,59 @@ class WebConfig:
     debug: bool = False
 
 
+# ── Data forwarding config ──────────────────────────────────────────────
+# Optional: push weather data to online forecasting / citizen-science
+# networks.  Each service is independently enabled.  All are off by
+# default so the station runs fine without any of them.
+
+@dataclass(frozen=True)
+class ForwardingConfig:
+    """Settings for forwarding weather data to online services.
+
+    Every service is opt-in.  The forwarder runs in its own background
+    thread (like the recorder) and pushes the latest readings at the
+    configured interval.  No external Python dependencies — uses only
+    stdlib ``urllib`` (HTTP) and ``socket`` (TCP for CWOP).
+    """
+
+    # ── General ──────────────────────────────────────────────────────
+    enabled: bool = False                   # master switch
+    forward_interval_seconds: int = 300     # push every 5 min (CWOP min is 5)
+    timeout_seconds: int = 30               # HTTP / TCP connect+read timeout
+
+    # ── Weather Underground PWS ─────────────────────────────────────
+    # https://support.weather.com/s/article/PWS-Upload-Protocol
+    # Sign up at wunderground.com, register a PWS, get ID + Station Key.
+    wunderground_enabled: bool = False
+    wunderground_station_id: str = ""       # e.g. "KCASANFR5"
+    wunderground_password: str = ""         # Station Key (case-sensitive)
+    wunderground_rapidfire: bool = False    # True → use rtupdate server
+
+    # ── CWOP (Citizen Weather Observer Program / NOAA) ───────────────
+    # http://wxqa.com/
+    # Register at wxqa.com to get a CW/DW/EW/FW/GW ID.
+    # Data flows to MADIS → NWS forecast models.
+    cwop_enabled: bool = False
+    cwop_station_id: str = ""               # e.g. "EW9876"
+    cwop_server: str = "cwop.aprs.net"
+    cwop_port: int = 14580                   # fallback: port 23
+
+    # ── WeatherCloud ────────────────────────────────────────────────
+    # https://weathercloud.net/
+    # Create a device, get a Device ID and Key from the dashboard.
+    weathercloud_enabled: bool = False
+    weathercloud_device_id: str = ""         # 12-digit numeric ID
+    weathercloud_device_key: str = ""        # 32-char hex key
+
+    # ── OpenWeatherMap Station API 3.0 ──────────────────────────────
+    # https://openweathermap.org/stations
+    # Register a station via the API (POST /stations) to get the
+    # internal station_id, then enable forwarding here.
+    openweathermap_enabled: bool = False
+    openweathermap_api_key: str = ""
+    openweathermap_station_id: str = ""      # internal ID from OWM (24 hex)
+
+
 # ── Top-level config ──────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -136,6 +189,7 @@ class Config:
     recording: RecordingConfig = field(default_factory=RecordingConfig)
     alerts: AlertConfig = field(default_factory=AlertConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    forwarding: ForwardingConfig = field(default_factory=ForwardingConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize config to a plain dict (for logging / dashboard)."""
@@ -163,6 +217,7 @@ class Config:
         recording_data = raw.pop("recording", {})
         alert_data = raw.pop("alerts", {})
         web_data = raw.pop("web", {})
+        forwarding_data = raw.pop("forwarding", {})
 
         # Build sub-configs, ignoring unknown keys
         def _build(cls_: type, data: dict) -> object:
@@ -177,6 +232,7 @@ class Config:
             recording=_build(RecordingConfig, recording_data),
             alerts=_build(AlertConfig, alert_data),
             web=_build(WebConfig, web_data),
+            forwarding=_build(ForwardingConfig, forwarding_data),
         )
 
     @classmethod
