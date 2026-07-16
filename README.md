@@ -1,7 +1,7 @@
 # weather-station-agent
 
 <p align="center">
-  <strong>v0.1.0</strong> · Comprehensive weather measurement and recording agent for Raspberry Pi Zero 2 W
+  <strong>v0.2.0</strong> · Comprehensive weather measurement and recording agent for Raspberry Pi Zero 2 W
 </p>
 
 An open-source weather station agent that reads 11 different sensor types, records data to SQLite, serves a real-time web dashboard, generates daily/weekly reports, and triggers threshold-based alerts — all on a $15 Raspberry Pi Zero 2 W.
