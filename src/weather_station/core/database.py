@@ -84,6 +84,14 @@ CREATE TABLE IF NOT EXISTS daily_summaries (
 
 CREATE INDEX IF NOT EXISTS idx_summaries_date
     ON daily_summaries (date);
+
+-- ── Remote nodes registry ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS nodes (
+    station_id  TEXT PRIMARY KEY,
+    node_type   TEXT,
+    last_seen   TEXT,                        -- ISO 8601 UTC
+    first_seen  TEXT                         -- ISO 8601 UTC
+);
 """
 
 
@@ -328,6 +336,33 @@ class WeatherDatabase:
             params = [station_id]
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+
+    # ── Maintenance ────────────────────────────────────────────────────
+
+    def update_node_last_seen(
+        self,
+        station_id: str,
+        node_type: str = "remote",
+        timestamp: str | None = None,
+    ) -> None:
+        """Update (or insert) a remote node's last-seen timestamp."""
+        ts = timestamp or datetime.now(timezone.utc).isoformat()
+        sql = """
+            INSERT INTO nodes (station_id, node_type, last_seen, first_seen)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(station_id) DO UPDATE SET
+                node_type = excluded.node_type,
+                last_seen = excluded.last_seen
+        """
+        with self._write_lock, self._connect() as conn:
+            conn.execute(sql, (station_id, node_type, ts, ts))
+
+    def get_all_nodes(self) -> list[dict[str, Any]]:
+        """Return all registered remote nodes ordered by most recent."""
+        sql = "SELECT station_id, node_type, last_seen, first_seen FROM nodes ORDER BY last_seen DESC"
+        with self._connect() as conn:
+            rows = conn.execute(sql).fetchall()
             return [dict(r) for r in rows]
 
     # ── Maintenance ────────────────────────────────────────────────────

@@ -1,0 +1,5 @@
+# ESP32 MicroPython — ignore compiled bytecode and temp files
+__pycache__/
+*.mpy
+*.pyc
+config_local.py

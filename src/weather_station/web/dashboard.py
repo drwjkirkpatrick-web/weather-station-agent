@@ -105,6 +105,10 @@ def create_app(db: WeatherDatabase, station_id: str = "ws01") -> Flask:
     def health() -> str:
         return jsonify({"status": "ok"})
 
+    # ── Register ingest blueprint (ESP32 remote nodes) ───────────
+    from weather_station.ingest.api import create_ingest_blueprint
+    app.register_blueprint(create_ingest_blueprint(db))
+
     return app
 
 

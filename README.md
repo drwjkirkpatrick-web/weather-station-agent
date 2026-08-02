@@ -1,10 +1,10 @@
 # weather-station-agent
 
 <p align="center">
-  <strong>v0.2.0</strong> · Comprehensive weather measurement and recording agent for Raspberry Pi Zero 2 W
+  <strong>v0.3.0</strong> · Comprehensive weather measurement and recording agent for Raspberry Pi Zero 2 W + ESP32 field nodes
 </p>
 
-An open-source weather station agent that reads 11 different sensor types, records data to SQLite, serves a real-time web dashboard, generates daily/weekly reports, and triggers threshold-based alerts — all on a $15 Raspberry Pi Zero 2 W.
+An open-source weather station agent that reads 11 different sensor types on Raspberry Pi, receives data from ESP32 field nodes, records everything to SQLite, serves a real-time web dashboard, generates daily/weekly reports, and triggers threshold-based alerts — all on a $15 Raspberry Pi Zero 2 W.
 
 ---
 
@@ -21,7 +21,7 @@ An open-source weather station agent that reads 11 different sensor types, recor
 | Forwarding | Push to Wunderground PWS, CWOP, WeatherCloud, OpenWeatherMap |
 | CLI | Full-featured CLI for status, reads, exports, reports, forwarding |
 | Mock Mode | 100% functional without hardware — develop and test anywhere |
-| Tests | 159 tests, all passing |
+| Tests | 176 tests, all passing |
 
 ---
 
@@ -384,6 +384,84 @@ To add a new forwarding target:
 4. Register the adapter in `forwarding/services/__init__.py`
 5. Add it to `_build_services()` in `forwarder.py`
 6. Write tests in `tests/test_forwarding.py`
+
+---
+
+## ESP32 Field Nodes (v0.3.0)
+
+The weather station now supports **ESP32-based remote sensor nodes** that push data to the Pi hub over WiFi via MQTT or HTTP.
+
+### Why ESP32 Nodes?
+
+| Use case | Why it helps |
+|----------|-------------|
+| **Multiple locations** | Garden, greenhouse, roof — all feed one Pi hub |
+| **Battery power** | Deep-sleep cycles give 3–6 months on an 18650 battery |
+| **Cost** | $5 ESP32 + $5 BME280 = full remote station for ~$10 |
+| **Range** | WiFi covers most home/garden setups; MQTT broker on the Pi |
+| **Redundancy** | If one node fails, others and the Pi keep recording |
+
+### Architecture
+
+```
+┌─────────────┐     WiFi/MQTT     ┌─────────────────────┐
+│ ESP32 Node  │ ─────────────────→│  Pi Zero 2 W Hub    │
+│ (battery)   │    readings JSON  │  ─ weather-station │
+│ BME280 +    │                   │  ─ SQLite           │
+│ rain gauge  │                   │  ─ Flask dashboard  │
+└─────────────┘                   │  ─ ingest API       │
+                                  └─────────────────────┘
+```
+
+### ESP32 Sensor Support
+
+| Sensor | Bus | Measures | Cost |
+|--------|-----|----------|------|
+| **BME280** | I2C | Temp, humidity, pressure | $5 |
+| **DHT22** | One-wire | Temp, humidity | $3 |
+| **DS18B20** | One-wire | Waterproof temperature | $3 |
+| **BH1750** | I2C | Ambient light (lux) | $2 |
+| **Anemometer** | GPIO | Wind speed | $15–30 |
+| **Rain gauge** | GPIO | Rainfall (tipping bucket) | $15–30 |
+| **MQ-135** | ADC | Air quality (approximate CO2) | $2 |
+
+### Quick Start (ESP32)
+
+1. **Flash MicroPython** on your ESP32
+2. **Copy project files** to the ESP32:
+   ```bash
+   cd esp32/
+   mpremote cp config.py : sensor_base.py : networking.py : main.py :
+   mpremote cp sensors/*.py :sensors/
+   ```
+3. **Edit `config.py`** with your WiFi SSID, password, and Pi hub IP
+4. **Reboot** — the ESP32 will wake, read sensors, transmit, and deep-sleep every 5 minutes
+
+Full setup guide: [`docs/ESP32_SETUP.md`](docs/ESP32_SETUP.md)
+
+### Pi Hub Setup (receive from ESP32)
+
+The Pi hub automatically accepts ESP32 data — no extra config needed. The ingest API is registered when the dashboard starts:
+
+```bash
+weather-station -c config.yaml run
+```
+
+The ESP32 pushes to:
+- **MQTT** → `weather/{station_id}/readings` (broker: Mosquitto on Pi)
+- **HTTP** → `POST http://pi-ip:8080/api/ingest`
+
+Readings appear in the dashboard namespaced as `esp32-01/bme280`, so they never collide with local Pi sensors.
+
+### Multi-Node Example
+
+| Node ID | Location | Sensors |
+|---------|----------|---------|
+| esp32-01 | Garden | BME280 + rain + light |
+| esp32-02 | Greenhouse | BME280 + DS18B20 soil |
+| esp32-03 | Roof | Anemometer + BME280 |
+
+All nodes push to the same Pi hub. The dashboard shows every node's readings alongside local Pi sensors.
 
 ---
 
